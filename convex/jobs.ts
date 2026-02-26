@@ -2,21 +2,22 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 const JOB_LISTINGS = [
-  { title: "Southbag Branch Greeter", salary: 0.03 },
-  { title: "ATM Apology Writer", salary: 0.05 },
+  { title: "Southbag Branch Greeter", salary: 1 },
+  { title: "ATM Apology Writer", salary: 1.5 },
   { title: "Fee Explanation Specialist", salary: 0.04 },
   { title: "Complaint Ignorer", salary: 0.06 },
-  { title: "Password Reset Denier", salary: 0.02 },
-  { title: "Queue Extension Coordinator", salary: 0.07 },
-  { title: "Hold Music DJ", salary: 0.04 },
+  { title: "Password Reset Denier", salary: 2.02 },
+  { title: "Queue Extension Coordinator", salary: 1.07 },
+  { title: "Hold Music DJ", salary: 6 },
   { title: "Overdraft Celebration Planner", salary: 0.05 },
   { title: "Terms & Conditions Lengthener", salary: 0.08 },
   { title: "Customer Disappointment Analyst", salary: 0.03 },
   { title: "Lobby Floor Starer", salary: 0.01 },
-  { title: "Senior Vice President of Nothing", salary: 0.10 },
-  { title: "Chief Vibes Officer", salary: 0.09 },
-  { title: "Intern (Unpaid)", salary: 0.005 },
+  { title: "Senior Vice President of Nothing", salary: 100 },
+  { title: "Chief Vibes Officer", salary: 9 },
+  { title: "Intern (Unpaid)", salary: 0.0 },
   { title: "Executive Paper Shredder", salary: 0.06 },
+  { title: "Vibe Coder" , salary: 2.0 },
 ];
 
 export const getJob = query({

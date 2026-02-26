@@ -26,9 +26,9 @@
       },
       {
         "command": "/south-deposit",
-        "description": "Deposit money into your account",
-        "usage_hint": "<amount>",
-        "should_escape": false
+        "description": "Deposit money into a user's account (admin only)",
+        "usage_hint": "@user <amount>",
+        "should_escape": true
       },
       {
         "command": "/south-transfer",
@@ -48,6 +48,17 @@
         "should_escape": false
       },
       {
+        "command": "/south-rob",
+        "description": "Rob another user's Southbag account",
+        "usage_hint": "@someone",
+        "should_escape": true
+      },
+      {
+        "command": "/south-notifs",
+        "description": "Toggle balance change DM notifications on/off",
+        "should_escape": false
+      },
+      {
         "command": "/south-mystery-fee",
         "description": "Charge yourself a mystery fee. Why would you.",
         "should_escape": false
@@ -58,12 +69,14 @@
     "scopes": {
       "bot": [
         "app_mentions:read",
+        "channels:history",
         "chat:write",
         "commands",
         "im:history",
         "im:read",
         "im:write",
-        "reactions:write"
+        "reactions:write",
+        "users:read"
       ]
     }
   },
@@ -71,6 +84,7 @@
     "event_subscriptions": {
       "bot_events": [
         "app_mention",
+        "message.channels",
         "message.im"
       ]
     },

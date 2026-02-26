@@ -239,6 +239,117 @@ export const freezeAccount = mutation({
   },
 });
 
+export const rob = mutation({
+  args: {
+    robberId: v.string(),
+    victimId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.robberId === args.victimId) return { error: "self_rob" };
+
+    const robber = await ctx.db
+      .query("accounts")
+      .withIndex("by_user", (q) => q.eq("userId", args.robberId))
+      .first();
+    if (!robber) return { error: "no_account" };
+    if (robber.status === "frozen") return { error: "frozen" };
+
+    const victim = await ctx.db
+      .query("accounts")
+      .withIndex("by_user", (q) => q.eq("userId", args.victimId))
+      .first();
+    if (!victim) return { error: "no_victim" };
+
+    const now = Date.now();
+    const caught = Math.random() < 0.45;
+
+    if (caught) {
+      // Caught! Fine the robber
+      const fine = Math.round((Math.random() * 1.5 + 0.50) * 100) / 100;
+      const newBalance = Math.round((robber.balance - fine) * 100) / 100;
+      await ctx.db.patch(robber._id, { balance: newBalance, status: "suspicious" });
+      await ctx.db.insert("transactions", {
+        userId: args.robberId,
+        type: "fee",
+        amount: -fine,
+        description: "Attempted robbery fine",
+        balanceAfter: newBalance,
+        createdAt: now,
+      });
+      return { success: false, fine, newBalance, victimId: args.victimId };
+    }
+
+    // Successful robbery
+    const maxSteal = Math.min(victim.balance, 2.00);
+    if (maxSteal <= 0) return { error: "victim_broke" };
+    const stolen = Math.round((Math.random() * maxSteal * 0.5 + 0.01) * 100) / 100;
+    const fence = Math.round(stolen * 0.30 * 100) / 100; // 30% fencing fee
+    const net = Math.round((stolen - fence) * 100) / 100;
+
+    const victimNewBal = Math.round((victim.balance - stolen) * 100) / 100;
+    const robberNewBal = Math.round((robber.balance + net) * 100) / 100;
+
+    await ctx.db.patch(victim._id, { balance: victimNewBal });
+    await ctx.db.patch(robber._id, { balance: robberNewBal });
+
+    await ctx.db.insert("transactions", {
+      userId: args.victimId,
+      type: "withdrawal",
+      amount: -stolen,
+      description: "Mysterious disappearance of funds",
+      balanceAfter: victimNewBal,
+      createdAt: now,
+    });
+    await ctx.db.insert("transactions", {
+      userId: args.robberId,
+      type: "deposit",
+      amount: net,
+      description: "Found money on the ground",
+      balanceAfter: robberNewBal,
+      createdAt: now,
+    });
+    await ctx.db.insert("transactions", {
+      userId: args.robberId,
+      type: "fee",
+      amount: -fence,
+      description: "Fencing fee (30%)",
+      balanceAfter: robberNewBal,
+      createdAt: now + 1,
+    });
+
+    return { success: true, stolen, fence, net, robberNewBal, victimNewBal, victimId: args.victimId };
+  },
+});
+
+export const toggleNotifications = mutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const account = await ctx.db
+      .query("accounts")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!account) return null;
+    const newVal = !account.notifications;
+    await ctx.db.patch(account._id, { notifications: newVal });
+    return newVal;
+  },
+});
+
+export const getNotificationUsers = query({
+  args: { userIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const result: string[] = [];
+    for (const userId of args.userIds) {
+      const account = await ctx.db
+        .query("accounts")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .first();
+      if (account?.notifications) result.push(userId);
+    }
+    return result;
+  },
+});
+
 export const setStatus = mutation({
   args: { userId: v.string(), status: v.string() },
   handler: async (ctx, args) => {

@@ -17,6 +17,7 @@ export default defineSchema({
     balance: v.number(),
     name: v.optional(v.string()),
     status: v.string(), // "active" | "frozen" | "suspicious" | "vibes-based"
+    notifications: v.optional(v.boolean()),
     createdAt: v.number(),
     lastFeeAt: v.number(),
   }).index("by_user", ["userId"]),

@@ -26,7 +26,7 @@ function formatMoney(n) {
 
 function registerBankingCommands(app, convex, api) {
   // /south-balance - Check your balance
-  app.command('/south-balance', async ({ command, ack, respond }) => {
+  app.command('/south-balance', async ({ command, ack, respond, client }) => {
     await ack();
     const userId = command.user_id;
 
@@ -47,6 +47,8 @@ function registerBankingCommands(app, convex, api) {
       amount: feeAmount,
       description: feeDesc,
     });
+
+    await notifyBalanceChange(client, convex, api, userId, feeDesc, -feeAmount, newBalance);
 
     const statusEmoji = {
       active: '',
@@ -114,7 +116,7 @@ function registerBankingCommands(app, convex, api) {
   });
 
   // /south-transfer - Transfer money (badly)
-  app.command('/south-transfer', async ({ command, ack, respond }) => {
+  app.command('/south-transfer', async ({ command, ack, respond, client }) => {
     await ack();
     const userId = command.user_id;
     const parts = command.text.trim().split(/\s+/);
@@ -157,6 +159,8 @@ function registerBankingCommands(app, convex, api) {
 
     const feeLines = result.feeBreakdown.map(f => `• ${f.desc}: -${formatMoney(f.amount)}`).join('\n');
 
+    await notifyBalanceChange(client, convex, api, userId, `Transfer to ${recipient}`, -(result.amount + result.fees), result.newBalance);
+
     await respond({
       response_type: 'ephemeral',
       blocks: [
@@ -181,23 +185,43 @@ function registerBankingCommands(app, convex, api) {
     });
   });
 
-  // /south-deposit - Deposit money (kind of)
-  app.command('/south-deposit', async ({ command, ack, respond }) => {
+  // /south-deposit - Admin only (U091KE59H5H), deposit into any user's account
+  app.command('/south-deposit', async ({ command, ack, respond, client }) => {
     await ack();
-    const userId = command.user_id;
-    const amount = parseFloat(command.text.trim());
+    const ADMIN_ID = 'U091KE59H5H';
+
+    if (command.user_id !== ADMIN_ID) {
+      await respond({ response_type: 'ephemeral', text: "You don't have permission to deposit. Nice try." });
+      return;
+    }
+
+    const text = command.text.trim();
+    const mentionMatch = text.match(/<@([A-Z0-9]+)(\|[^>]*)?>/);
+
+    // Remove the mention to isolate the amount
+    const withoutMention = text.replace(/<@[^>]+>/, '').trim();
+    const amount = parseFloat(withoutMention);
+
+    if (!mentionMatch || isNaN(amount) || amount <= 0) {
+      await respond({ response_type: 'ephemeral', text: "Usage: `/south-deposit @user <amount>`\nMake sure you select the user from the dropdown when typing @." });
+      return;
+    }
+
+    const targetUserId = mentionMatch[1];
 
     if (isNaN(amount) || amount <= 0) {
-      await respond({ response_type: 'ephemeral', text: "Enter a valid amount. `/south-deposit 10.00`" });
+      await respond({ response_type: 'ephemeral', text: "Enter a valid amount. `/south-deposit @user 10.00`" });
       return;
     }
 
-    const result = await convex.mutation(api.accounts.deposit, { userId, amount });
+    const result = await convex.mutation(api.accounts.deposit, { userId: targetUserId, amount });
 
     if (result.error === 'no_account') {
-      await respond({ response_type: 'ephemeral', text: "No account found. `/south-open-account` first." });
+      await respond({ response_type: 'ephemeral', text: "That user doesn't have an account." });
       return;
     }
+
+    await notifyBalanceChange(client, convex, api, targetUserId, 'Deposit', result.actual - result.fee, result.newBalance);
 
     await respond({
       response_type: 'ephemeral',
@@ -210,7 +234,7 @@ function registerBankingCommands(app, convex, api) {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Requested:* ${formatMoney(result.requested)}\n*Actually deposited:* ${formatMoney(result.actual)} _(adjusted for market conditions)_\n*Convenience fee:* -${formatMoney(result.fee)}\n\n*New balance:* ${formatMoney(result.newBalance)}`,
+            text: `*Deposited to:* <@${targetUserId}>\n*Requested:* ${formatMoney(result.requested)}\n*Actually deposited:* ${formatMoney(result.actual)} _(adjusted for market conditions)_\n*Convenience fee:* -${formatMoney(result.fee)}\n\n*Their new balance:* ${formatMoney(result.newBalance)}`,
           },
         },
         {
@@ -325,8 +349,114 @@ function registerBankingCommands(app, convex, api) {
     });
   });
 
+  // /south-rob - Rob another user (45% chance of getting caught)
+  app.command('/south-rob', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+    const targetText = command.text.trim();
+
+    // Extract user ID from Slack mention format <@U12345>
+    const mentionMatch = targetText.match(/<@([A-Z0-9]+)(\|[^>]*)?>/);
+    if (!mentionMatch) {
+      await respond({
+        response_type: 'ephemeral',
+        text: "Usage: `/south-rob @someone` — you need to pick a target, genius.",
+      });
+      return;
+    }
+
+    const victimId = mentionMatch[1];
+    const result = await convex.mutation(api.accounts.rob, { robberId: userId, victimId });
+
+    if (result.error === 'self_rob') {
+      await respond({ response_type: 'ephemeral', text: "You can't rob yourself. That's just called spending." });
+      return;
+    }
+    if (result.error === 'no_account') {
+      await respond({ response_type: 'ephemeral', text: "You need a `/south-open-account` to rob someone. Even criminals need a bank account." });
+      return;
+    }
+    if (result.error === 'frozen') {
+      await respond({ response_type: 'ephemeral', text: "Your account is frozen. No heists for you." });
+      return;
+    }
+    if (result.error === 'no_victim') {
+      await respond({ response_type: 'ephemeral', text: "They don't have a Southbag account. Can't rob what doesn't exist." });
+      return;
+    }
+    if (result.error === 'victim_broke') {
+      await respond({ response_type: 'ephemeral', text: "They're broke. There's nothing to steal. Sad, really." });
+      return;
+    }
+
+    if (result.success) {
+      await notifyBalanceChange(client, convex, api, userId, 'Found money on the ground', result.net, result.robberNewBal);
+      await notifyBalanceChange(client, convex, api, result.victimId, 'Mysterious disappearance of funds', -result.stolen, result.victimNewBal);
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: '🔫 Robbery Successful' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `You robbed <@${result.victimId}>!\n\n*Stolen:* ${formatMoney(result.stolen)}\n*Fencing fee (30%):* -${formatMoney(result.fence)}\n*Net profit:* ${formatMoney(result.net)}\n\n*Your new balance:* ${formatMoney(result.robberNewBal)}`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              { type: 'mrkdwn', text: '_Southbag does not condone this. But we do take a cut._' },
+            ],
+          },
+        ],
+      });
+    } else {
+      await notifyBalanceChange(client, convex, api, userId, 'Attempted robbery fine', -result.fine, result.newBalance);
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: '🚨 Caught Red-Handed' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `You tried to rob <@${result.victimId}> and got *caught*.\n\n*Fine:* -${formatMoney(result.fine)}\n*New balance:* ${formatMoney(result.newBalance)}\n*Account status:* :eyes: suspicious\n\n_Maybe try being less obvious next time._`,
+            },
+          },
+        ],
+      });
+    }
+  });
+
+  // /south-notifs - Toggle balance notifications
+  app.command('/south-notifs', async ({ command, ack, respond }) => {
+    await ack();
+    const userId = command.user_id;
+
+    const result = await convex.mutation(api.accounts.toggleNotifications, { userId });
+
+    if (result === null) {
+      await respond({ response_type: 'ephemeral', text: "You don't have an account. `/south-open-account` first." });
+      return;
+    }
+
+    await respond({
+      response_type: 'ephemeral',
+      text: result
+        ? "Balance notifications *enabled*. You'll get a DM every time your balance changes. Enjoy the anxiety."
+        : "Balance notifications *disabled*. Ignorance is bliss.",
+    });
+  });
+
   // /south-mystery-fee - Charge yourself a mystery fee (why would you)
-  app.command('/south-mystery-fee', async ({ command, ack, respond }) => {
+  app.command('/south-mystery-fee', async ({ command, ack, respond, client }) => {
     await ack();
     const userId = command.user_id;
     const fee = Math.round((Math.random() * 0.49 + 0.01) * 100) / 100;
@@ -343,6 +473,8 @@ function registerBankingCommands(app, convex, api) {
       return;
     }
 
+    await notifyBalanceChange(client, convex, api, userId, desc, -fee, result);
+
     await respond({
       response_type: 'ephemeral',
       text: `You've been charged *${formatMoney(fee)}* for: _${desc}_\n\nNew balance: ${formatMoney(result)}\n\nYou literally asked for this.`,
@@ -350,4 +482,18 @@ function registerBankingCommands(app, convex, api) {
   });
 }
 
-module.exports = { registerBankingCommands };
+async function notifyBalanceChange(client, convex, api, userId, description, amount, newBalance) {
+  try {
+    const notifyUsers = await convex.query(api.accounts.getNotificationUsers, { userIds: [userId] });
+    if (notifyUsers.length === 0) return;
+
+    const sign = amount >= 0 ? '+' : '';
+    const emoji = amount >= 0 ? ':chart_with_upwards_trend:' : ':chart_with_downwards_trend:';
+    await client.chat.postMessage({
+      channel: userId,
+      text: `${emoji} *Balance Update*\n${description}: ${sign}${formatMoney(Math.abs(amount))}\nNew balance: ${formatMoney(newBalance)}`,
+    });
+  } catch (e) {}
+}
+
+module.exports = { registerBankingCommands, notifyBalanceChange };

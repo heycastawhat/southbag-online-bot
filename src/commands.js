@@ -66,10 +66,18 @@ function parseCommands(text) {
     cleanText = cleanText.replace(volumeMatch[0], '').trim();
   }
 
+  // [FEE:amount:reason]
+  const feeMatch = cleanText.match(/\[FEE:([\d.]+):(.*?)\]/);
+  if (feeMatch) {
+    const feeAmount = Math.min(Math.max(parseFloat(feeMatch[1]), 0.01), 100000);
+    commands.push({ type: 'fee', amount: feeAmount, reason: feeMatch[2] });
+    cleanText = cleanText.replace(feeMatch[0], '').trim();
+  }
+
   return { cleanText, commands };
 }
 
-async function executeCommands(commands, say, client, event) {
+async function executeCommands(commands, say, client, event, { convex, api, notifyBalanceChange } = {}) {
   for (const cmd of commands) {
     try {
       switch (cmd.type) {
@@ -160,6 +168,25 @@ async function executeCommands(commands, say, client, event) {
               timestamp: event.ts
             });
           } catch (e) {}
+          break;
+
+        case 'fee':
+          if (convex && api && event.user) {
+            const newBal = await convex.mutation(api.accounts.chargeFee, {
+              userId: event.user,
+              amount: cmd.amount,
+              description: cmd.reason,
+            });
+            if (newBal !== null) {
+              if (notifyBalanceChange) {
+                await notifyBalanceChange(client, convex, api, event.user, cmd.reason, -cmd.amount, newBal);
+              }
+              await say({
+                text: `_You've been charged $${cmd.amount.toFixed(2)} for: ${cmd.reason}_`,
+                thread_ts: event.thread_ts || event.ts
+              });
+            }
+          }
           break;
       }
     } catch (err) {

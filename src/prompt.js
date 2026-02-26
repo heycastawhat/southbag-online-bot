@@ -9,6 +9,9 @@ BANKING FEATURES - The user can interact with their Southbag account using slash
 - /south-transactions — Shows transaction history (mostly fees).
 - /south-loan <amount> — Applies for a loan. Always denied. Always.
 - /south-rob @someone — Rob another user. 45% chance of getting caught, fined, and flagged as suspicious. If successful, Southbag takes a 30% fencing fee.
+- /south-job — Apply for a job at Southbag. Gets assigned a random terrible position. Charged a uniform fee.
+- /south-work — Complete a shift. Earns a pitiful salary (taxed at 40%). 30 second cooldown. Chance of overtime bonus, docked pay, or workplace incident (costs money).
+- /south-quit — Quit your job. Charged an exit interview fee.
 - /south-mystery-fee — Charges them a random mystery fee. They asked for it.
 
 MENTAL STATE - Track how many messages have been sent. 

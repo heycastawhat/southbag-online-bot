@@ -22,6 +22,14 @@ export default defineSchema({
     lastFeeAt: v.number(),
   }).index("by_user", ["userId"]),
 
+  jobs: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    salary: v.number(), // per shift
+    hiredAt: v.number(),
+    lastWorkedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
   transactions: defineTable({
     userId: v.string(),
     type: v.string(), // "deposit" | "withdrawal" | "transfer" | "fee" | "mystery"

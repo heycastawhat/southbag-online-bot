@@ -435,6 +435,119 @@ function registerBankingCommands(app, convex, api) {
     }
   });
 
+  // /south-job - Apply for a job at Southbag
+  app.command('/south-job', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+
+    const result = await convex.mutation(api.jobs.apply, { userId });
+
+    if (result.error === 'already_employed') {
+      await respond({ response_type: 'ephemeral', text: `You already work as *${result.title}*. Use \`/south-work\` to do a shift or \`/south-quit\` if you've had enough.` });
+      return;
+    }
+    if (result.error === 'no_account') {
+      await respond({ response_type: 'ephemeral', text: "You need a `/south-open-account` before we can exploit you." });
+      return;
+    }
+
+    await notifyBalanceChange(client, convex, api, userId, 'Uniform deposit fee', -result.uniformFee, null);
+
+    await respond({
+      response_type: 'ephemeral',
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: 'Welcome to the Southbag Team' },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `Congratulations. You've been hired as:\n\n*${result.title}*\n*Salary:* ${formatMoney(result.salary)} per shift (before tax)\n*Uniform fee:* -${formatMoney(result.uniformFee)}\n\nUse \`/south-work\` to complete a shift. Don't expect a warm welcome.`,
+          },
+        },
+        {
+          type: 'context',
+          elements: [
+            { type: 'mrkdwn', text: '_You were not our first choice. Or our second. Or our third._' },
+          ],
+        },
+      ],
+    });
+  });
+
+  // /south-work - Do a shift at your job
+  app.command('/south-work', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+
+    const result = await convex.mutation(api.jobs.work, { userId });
+
+    if (result.error === 'no_job') {
+      await respond({ response_type: 'ephemeral', text: "You don't have a job. Use `/south-job` to apply. We're always hiring because everyone quits." });
+      return;
+    }
+    if (result.error === 'no_account') {
+      await respond({ response_type: 'ephemeral', text: "No account found. How did you even get hired?" });
+      return;
+    }
+    if (result.error === 'cooldown') {
+      await respond({ response_type: 'ephemeral', text: `Your next shift starts in *${result.remaining} seconds*. Even Southbag has labour laws. Barely.` });
+      return;
+    }
+
+    await notifyBalanceChange(client, convex, api, userId, result.event, result.pay >= 0 ? result.net || result.pay : result.pay, result.newBalance);
+
+    if (result.pay < 0) {
+      await respond({
+        response_type: 'ephemeral',
+        text: `:rotating_light: *Workplace Incident* at your ${result.title} job\n\nYou owe: ${formatMoney(Math.abs(result.pay))}\nNew balance: ${formatMoney(result.newBalance)}\n\n_Maybe don't touch the shredder next time._`,
+      });
+    } else {
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: 'Shift Complete' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Job:* ${result.title}\n*Event:* ${result.event}\n\n*Gross pay:* ${formatMoney(result.gross)}\n*Income tax (40%):* -${formatMoney(result.tax)}\n*Net pay:* ${formatMoney(result.net)}\n\n*New balance:* ${formatMoney(result.newBalance)}`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              { type: 'mrkdwn', text: '_Another day, another fraction of a cent._' },
+            ],
+          },
+        ],
+      });
+    }
+  });
+
+  // /south-quit - Quit your job
+  app.command('/south-quit', async ({ command, ack, respond }) => {
+    await ack();
+    const userId = command.user_id;
+
+    const result = await convex.mutation(api.jobs.quit, { userId });
+
+    if (result.error === 'no_job') {
+      await respond({ response_type: 'ephemeral', text: "You don't have a job to quit. Living the dream." });
+      return;
+    }
+
+    await respond({
+      response_type: 'ephemeral',
+      text: `You have quit your position as *${result.title}*.\n\nExit interview fee: -$0.05\n\n_Don't let the door hit you on the way out. Actually, do. It's funnier._`,
+    });
+  });
+
   // /south-notifs - Toggle balance notifications
   app.command('/south-notifs', async ({ command, ack, respond }) => {
     await ack();

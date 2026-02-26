@@ -54,6 +54,21 @@
         "should_escape": true
       },
       {
+        "command": "/south-job",
+        "description": "Apply for a job at Southbag (you'll regret it)",
+        "should_escape": false
+      },
+      {
+        "command": "/south-work",
+        "description": "Complete a shift at your Southbag job",
+        "should_escape": false
+      },
+      {
+        "command": "/south-quit",
+        "description": "Quit your Southbag job",
+        "should_escape": false
+      },
+      {
         "command": "/south-notifs",
         "description": "Toggle balance change DM notifications on/off",
         "should_escape": false

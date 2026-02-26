@@ -1,0 +1,17 @@
+{
+  "name": "southbag-slack-bot",
+  "version": "1.0.0",
+  "description": "Southbag Online Banking - Slack Bot (deliberately terrible customer support)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "convex:dev": "npx convex dev",
+    "convex:deploy": "npx convex deploy"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.1.0",
+    "convex": "^1.17.0",
+    "dotenv": "^16.4.0"
+  }
+}

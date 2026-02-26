@@ -1,0 +1,84 @@
+{
+  "_metadata": {
+    "major_version": 1
+  },
+  "display_information": {
+    "name": "Southbag Support",
+    "description": "Deliberately terrible customer support bot for Southbag Online Banking.",
+    "background_color": "#1a1a2e"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Southbag Support",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/south-open-account",
+        "description": "Open a Southbag Online Banking account",
+        "usage_hint": "[your name]",
+        "should_escape": false
+      },
+      {
+        "command": "/south-balance",
+        "description": "Check your account balance (fee applies)",
+        "should_escape": false
+      },
+      {
+        "command": "/south-deposit",
+        "description": "Deposit money into your account",
+        "usage_hint": "<amount>",
+        "should_escape": false
+      },
+      {
+        "command": "/south-transfer",
+        "description": "Transfer money to someone (fees apply)",
+        "usage_hint": "<amount> <recipient>",
+        "should_escape": true
+      },
+      {
+        "command": "/south-transactions",
+        "description": "View your transaction history",
+        "should_escape": false
+      },
+      {
+        "command": "/south-loan",
+        "description": "Apply for a loan (spoiler: denied)",
+        "usage_hint": "<amount>",
+        "should_escape": false
+      },
+      {
+        "command": "/south-mystery-fee",
+        "description": "Charge yourself a mystery fee. Why would you.",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "chat:write",
+        "commands",
+        "im:history",
+        "im:read",
+        "im:write",
+        "reactions:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_mention",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
+  }
+}

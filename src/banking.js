@@ -256,7 +256,7 @@ function registerBankingCommands(app, convex, api) {
     if (!txns || txns.length === 0) {
       await respond({
         response_type: 'ephemeral',
-        text: "No transactions found. Either you're new or we lost them. Both equally likely.",
+        text: "No transactions found. Either you're new or we lost them.",
       });
       return;
     }
@@ -284,7 +284,7 @@ function registerBankingCommands(app, convex, api) {
         {
           type: 'context',
           elements: [
-            { type: 'mrkdwn', text: '_Some transactions may be missing. Or invented. Hard to say._' },
+            { type: 'mrkdwn', text: '_Some transactions may be missing. Hard to say._' },
           ],
         },
       ],
@@ -545,6 +545,107 @@ function registerBankingCommands(app, convex, api) {
     await respond({
       response_type: 'ephemeral',
       text: `You have quit your position as *${result.title}*.\n\nExit interview fee: -$0.05\n\n_Don't let the door hit you on the way out. Actually, do. It's funnier._`,
+    });
+  });
+
+  // /south-coinflip - Bet on heads or tails
+  app.command('/south-coinflip', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+    const parts = command.text.trim().split(/\s+/);
+    const bet = parseFloat(parts[0]);
+    const call = (parts[1] || '').toLowerCase();
+
+    if (isNaN(bet) || bet <= 0 || !['heads', 'tails'].includes(call)) {
+      await respond({ response_type: 'ephemeral', text: "Usage: `/south-coinflip <amount> <heads|tails>`" });
+      return;
+    }
+
+    const result = await convex.mutation(api.gambling.coinflip, { userId, bet, call });
+
+    if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+    if (result.error === 'frozen') { await respond({ response_type: 'ephemeral', text: "Account frozen. No gambling for you." }); return; }
+    if (result.error === 'insufficient') { await respond({ response_type: 'ephemeral', text: `You only have ${formatMoney(result.balance)}. Bet smaller or get richer.` }); return; }
+
+    await notifyBalanceChange(client, convex, api, userId, `Coinflip ${result.won ? 'win' : 'loss'}`, result.net, result.newBalance);
+
+    const emoji = result.result === 'heads' ? ':coin:' : ':coin:';
+    await respond({
+      response_type: 'ephemeral',
+      text: result.won
+        ? `${emoji} *${result.result.toUpperCase()}!* You called ${result.call} — you win!\n\nBet: ${formatMoney(result.bet)}\nPayout: ${formatMoney(result.payout)} _(1.8x — house takes its cut)_\nProfit: +${formatMoney(result.net)}\nNew balance: ${formatMoney(result.newBalance)}`
+        : `${emoji} *${result.result.toUpperCase()}!* You called ${result.call} — you lose.\n\nLost: ${formatMoney(result.bet)}\nNew balance: ${formatMoney(result.newBalance)}\n\n_The house always wins. Especially this house._`,
+    });
+  });
+
+  // /south-slots - Spin the slot machine
+  app.command('/south-slots', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+    const bet = parseFloat(command.text.trim());
+
+    if (isNaN(bet) || bet <= 0) {
+      await respond({ response_type: 'ephemeral', text: "Usage: `/south-slots <amount>`" });
+      return;
+    }
+
+    const result = await convex.mutation(api.gambling.slots, { userId, bet });
+
+    if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+    if (result.error === 'frozen') { await respond({ response_type: 'ephemeral', text: "Account frozen." }); return; }
+    if (result.error === 'insufficient') { await respond({ response_type: 'ephemeral', text: `You only have ${formatMoney(result.balance)}. That's embarrassing.` }); return; }
+
+    await notifyBalanceChange(client, convex, api, userId, `Slots ${result.won ? 'win' : 'loss'}`, result.net, result.newBalance);
+
+    let outcomeText;
+    if (result.multiplier < 0) {
+      outcomeText = `*CURSED!* Three skulls. You lose ${formatMoney(Math.abs(result.net))}.\n_The machine laughs at you._`;
+    } else if (result.won && result.multiplier >= 5) {
+      outcomeText = `*JACKPOT!* ${result.multiplier}x payout!\nProfit: +${formatMoney(result.net)}`;
+    } else if (result.won) {
+      outcomeText = `Two matching! ${result.multiplier}x payout.\nProfit: +${formatMoney(result.net)}`;
+    } else {
+      outcomeText = `Nothing. Lost ${formatMoney(result.bet)}.`;
+    }
+
+    await respond({
+      response_type: 'ephemeral',
+      text: `:slot_machine: *[ ${result.reels.join(" | ")} ]*\n\n${outcomeText}\n\nNew balance: ${formatMoney(result.newBalance)}`,
+    });
+  });
+
+  // /south-gamble - Card games (high risk, high reward)
+  app.command('/south-gamble', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+    const [amountStr, game = "unknown"] = command.text.trim().split(/\s+/, 2);
+    const bet = parseFloat(amountStr);
+
+    if (isNaN(bet) || bet <= 0) {
+      await respond({ response_type: 'ephemeral', text: "Usage: `/south-gamble <amount> <game>` — e.g. `/south-gamble 100 blackjack`." });
+      return;
+    }
+
+    // TODO: Implement different card games. For now, fallback to old gamble logic.
+    const result = await convex.mutation(api.gambling.gamble, { userId, bet });
+
+    if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+    if (result.error === 'frozen') { await respond({ response_type: 'ephemeral', text: "Account frozen." }); return; }
+    if (result.error === 'insufficient') { await respond({ response_type: 'ephemeral', text: `You only have ${formatMoney(result.balance)}. Maybe earn some money first.` }); return; }
+
+    await notifyBalanceChange(client, convex, api, userId, `Card Game (${game}): ${result.outcome}`, result.net, result.newBalance);
+
+    let emoji = ':black_joker:';
+    let flavor = '';
+    if (result.outcome === 'JACKPOT') { emoji = ':star2:'; flavor = `_Unbelievable luck at ${game}! Southbag will be investigating this._`; }
+    else if (result.multiplier >= 3) { flavor = `_Big win in ${game}. Enjoy it while it lasts._`; }
+    else if (result.multiplier < 0) { emoji = ':fire:'; flavor = `_You didn't just lose your bet in ${game}. You lost MORE than your bet. Classic Southbag._`; }
+    else if (!result.won) { flavor = `_Thank you for your donation to the Southbag executive bonus pool via ${game}._`; }
+    else { flavor = `_Not bad at ${game}. We'll get it back._`; }
+
+    await respond({
+      response_type: 'ephemeral',
+      text: `${emoji} *${result.outcome}* ${result.multiplier > 0 ? `(${result.multiplier}x)` : ''}\n\nGame: ${game}\nBet: ${formatMoney(result.bet)}\n${result.won ? `Payout: ${formatMoney(result.payout)}\nProfit: +${formatMoney(result.net)}` : `Lost: ${formatMoney(Math.abs(result.net))}`}\n\nNew balance: ${formatMoney(result.newBalance)}\n\n${flavor}`,
     });
   });
 

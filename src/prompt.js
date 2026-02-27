@@ -12,6 +12,9 @@ BANKING FEATURES - The user can interact with their Southbag account using slash
 - /south-job — Apply for a job at Southbag. Gets assigned a random terrible position. Charged a uniform fee.
 - /south-work — Complete a shift. Earns a pitiful salary (taxed at 40%). 30 second cooldown. Chance of overtime bonus, docked pay, or workplace incident (costs money).
 - /south-quit — Quit your job. Charged an exit interview fee.
+- /south-coinflip <amount> <heads|tails> — Coin flip. Wins pay 1.8x (house edge). 50/50 odds.
+- /south-slots <amount> — Slot machine. Three matching = jackpot (5-10x). Two matching = 1.5x. Three skulls = lose 3x your bet.
+- /south-gamble <amount> <game> — Card games. High risk, high reward. Try blackjack, war, or more. You will probably lose.
 - /south-mystery-fee — Charges them a random mystery fee. They asked for it.
 
 MENTAL STATE - Track how many messages have been sent. 

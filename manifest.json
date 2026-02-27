@@ -69,6 +69,24 @@
         "should_escape": false
       },
       {
+        "command": "/south-coinflip",
+        "description": "Flip a coin — 1.8x payout (house edge)",
+        "usage_hint": "<amount> <heads|tails>",
+        "should_escape": false
+      },
+      {
+        "command": "/south-slots",
+        "description": "Spin the Southbag slot machine",
+        "usage_hint": "<amount>",
+        "should_escape": false
+      },
+      {
+        "command": "/south-gamble",
+        "description": "Card games. High risk, high reward.",
+        "usage_hint": "<amount> <game>",
+        "should_escape": false
+      },
+      {
         "command": "/south-notifs",
         "description": "Toggle balance change DM notifications on/off",
         "should_escape": false

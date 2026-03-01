@@ -24,36 +24,20 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: ':no_entry_sign: *You do not have a Southbag account.*\n\nUse `/south-open-account` to open one. We promise it will be the worst financial decision you make today.',
+        text: '*You do not have a Southbag account.*\n\nUse `/south-open-account` to open one. We promise it will be the worst financial decision you make today.',
       },
     });
     return blocks;
   }
 
   // Account overview
-  const statusEmoji = {
-    active: ':white_check_mark:',
-    frozen: ':ice_cube:',
-    suspicious: ':eyes:',
-    'vibes-based': ':crystal_ball:',
-  };
-  const tierEmoji = {
-    Bronze: ':third_place_medal:',
-    Silver: ':second_place_medal:',
-    Gold: ':first_place_medal:',
-    Platinum: ':gem:',
-    Diamond: ':diamond_shape_with_a_dot_inside:',
-    Obsidian: ':black_circle:',
-  };
-
   const tier = account.tier || 'None';
-  const tEmoji = tierEmoji[tier] || ':bust_in_silhouette:';
 
   blocks.push({
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `:bank: *Account Overview*`,
+      text: `*Account Overview*`,
     },
   });
   blocks.push({
@@ -61,14 +45,14 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
     fields: [
       { type: 'mrkdwn', text: `*Account Number*\n\`${account.accountNumber}\`` },
       { type: 'mrkdwn', text: `*Balance*\n${formatMoney(account.balance)}` },
-      { type: 'mrkdwn', text: `*Status*\n${statusEmoji[account.status] || ''} ${account.status}` },
-      { type: 'mrkdwn', text: `*Tier*\n${tEmoji} ${tier}` },
+      { type: 'mrkdwn', text: `*Status*\n${account.status}` },
+      { type: 'mrkdwn', text: `*Tier*\n${tier}` },
     ],
   });
   blocks.push({
     type: 'context',
     elements: [
-      { type: 'mrkdwn', text: `Notifications: ${account.notifications ? ':bell: On' : ':no_bell: Off'} · Opened: ${new Date(account.createdAt).toLocaleDateString()}` },
+      { type: 'mrkdwn', text: `Notifications: ${account.notifications ? 'On' : 'Off'} · Opened: ${new Date(account.createdAt).toLocaleDateString()}` },
     ],
   });
   blocks.push({ type: 'divider' });
@@ -78,7 +62,7 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: ':briefcase: *Employment*',
+      text: '*Employment*',
     },
   });
   if (job) {
@@ -108,7 +92,7 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: ':money_with_wings: *Loan Status*',
+      text: '*Loan Status*',
     },
   });
   if (loan) {
@@ -125,7 +109,7 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
     blocks.push({
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `:clock1: Loan age: ${hoursSince}h · \`/south-loan repay\` to pay · \`/south-loan default\` to ruin everything` },
+        { type: 'mrkdwn', text: `Loan age: ${hoursSince}h · \`/south-loan repay\` to pay · \`/south-loan default\` to ruin everything` },
       ],
     });
   } else {
@@ -141,20 +125,20 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: ':shield: *Insurance*',
+      text: '*Insurance*',
     },
   });
   if (insurance) {
     const active = insurance.active;
     const expiresText = active
       ? `Expires: ${new Date(insurance.coveredUntil).toLocaleString()}`
-      : ':warning: *EXPIRED*';
+      : '*EXPIRED*';
     blocks.push({
       type: 'section',
       fields: [
         { type: 'mrkdwn', text: `*Plan*\n${insurance.plan}` },
         { type: 'mrkdwn', text: `*Premium Paid*\n${formatMoney(insurance.premium)}` },
-        { type: 'mrkdwn', text: `*Status*\n${active ? ':white_check_mark: Active' : ':x: Expired'}` },
+        { type: 'mrkdwn', text: `*Status*\n${active ? 'Active' : 'Expired'}` },
         { type: 'mrkdwn', text: `*Coverage*\n${expiresText}` },
       ],
     });
@@ -177,14 +161,13 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: ':chart_with_upwards_trend: *Crypto Portfolio*',
+      text: '*Crypto Portfolio*',
     },
   });
   if (crypto && crypto.holdings && crypto.holdings.length > 0) {
     const lines = crypto.holdings.map((h) => {
       const gl = h.gainLoss >= 0 ? `+${formatMoney(h.gainLoss)}` : `-${formatMoney(Math.abs(h.gainLoss))}`;
-      const emoji = h.gainLoss >= 0 ? ':small_red_triangle:' : ':small_red_triangle_down:';
-      return `${emoji} *${h.coin}* (${h.name}) — ${h.amount} coins @ ${formatMoney(h.currentPrice)} = ${formatMoney(h.value)} (${gl})`;
+      return `*${h.coin}* (${h.name}) — ${h.amount} coins @ ${formatMoney(h.currentPrice)} = ${formatMoney(h.value)} (${gl})`;
     });
     blocks.push({
       type: 'section',
@@ -209,15 +192,14 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: ':receipt: *Recent Transactions*',
+      text: '*Recent Transactions*',
     },
   });
   if (transactions && transactions.length > 0) {
     const lines = transactions.slice(0, 10).map((t) => {
       const sign = t.amount >= 0 ? '+' : '';
-      const emoji = t.amount >= 0 ? ':arrow_up:' : ':arrow_down:';
       const date = new Date(t.createdAt).toLocaleDateString();
-      return `${emoji} ${date}  ${sign}${formatMoney(Math.abs(t.amount))}  ${t.description}`;
+      return `${date}  ${sign}${formatMoney(Math.abs(t.amount))}  ${t.description}`;
     });
     blocks.push({
       type: 'section',
@@ -242,7 +224,7 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: ':zap: *Quick Commands*',
+      text: '*Quick Commands*',
     },
   });
   blocks.push({
@@ -263,7 +245,7 @@ function buildHomeBlocks(account, job, loan, transactions, crypto, insurance) {
   blocks.push({
     type: 'context',
     elements: [
-      { type: 'mrkdwn', text: '_Southbag Online Banking. We\'re not sorry._ :bank:' },
+      { type: 'mrkdwn', text: '_Southbag Online Banking. We\'re not sorry._' },
     ],
   });
 

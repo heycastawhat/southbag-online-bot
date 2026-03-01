@@ -291,61 +291,147 @@ function registerBankingCommands(app, convex, api) {
     });
   });
 
-  // /south-loan - Apply for a loan (spoiler: denied)
-  app.command('/south-loan', async ({ command, ack, respond }) => {
+  // /south-loan - Take out a loan, check status, repay, or default
+  app.command('/south-loan', async ({ command, ack, respond, client }) => {
     await ack();
-    const amount = parseFloat(command.text.trim()) || 1000;
+    const userId = command.user_id;
+    const text = command.text.trim();
 
-    const denialReasons = [
-      "Your vibes were off.",
-      "Our magic 8-ball said 'Ask again never'.",
-      "We checked your horoscope. Mercury is in retrograde.",
-      "Your account number has too many vowels.",
-      "The loan officer is on their 47th coffee break.",
-      "We don't actually have any money either.",
-      "You asked too politely. Suspicious.",
-      "Your credit score is a mood, and that mood is 'no'.",
-      "We flipped a coin. It landed on its edge. That means no.",
-      "The computer said no.",
-      "We ran your application through our advanced AI. It laughed.",
-      "Insufficient swagger.",
-    ];
-    const reason = denialReasons[Math.floor(Math.random() * denialReasons.length)];
+    if (!text) {
+      await respond({
+        response_type: 'ephemeral',
+        text: "Usage: `/south-loan <amount>` | `/south-loan status` | `/south-loan repay` | `/south-loan default`",
+      });
+      return;
+    }
+
+    const sub = text.toLowerCase();
+
+    if (sub === 'status') {
+      const result = await convex.query(api.loans.check, { userId });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+
+      if (!result.loan) {
+        await respond({ response_type: 'ephemeral', text: "You don't have an active loan. Lucky you. Use `/south-loan <amount>` to change that." });
+        return;
+      }
+
+      const elapsed = Math.floor((Date.now() - result.loan.takenAt) / 1000);
+      const hours = Math.floor(elapsed / 3600);
+      const minutes = Math.floor((elapsed % 3600) / 60);
+
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: 'Loan Status' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Principal:* ${formatMoney(result.loan.principal)}\n*Current interest:* ${formatMoney(result.loan.interest)}\n*Total owed:* ${formatMoney(result.loan.principal + result.loan.interest)}\n*Time since loan:* ${hours}h ${minutes}m\n\n_The interest never sleeps. Neither should your anxiety._`,
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    if (sub === 'repay') {
+      const result = await convex.mutation(api.loans.repay, { userId });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+      if (result.error === 'no_loan') { await respond({ response_type: 'ephemeral', text: "You don't have a loan to repay. Responsible, or just boring?" }); return; }
+      if (result.error === 'insufficient') {
+        await respond({ response_type: 'ephemeral', text: `You owe ${formatMoney(result.owed)} but only have ${formatMoney(result.balance)}. Maybe rob someone first.` });
+        return;
+      }
+
+      await notifyBalanceChange(client, convex, api, userId, 'Loan repayment', -result.totalPaid, result.newBalance);
+
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: 'Loan Repaid' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Total paid:* ${formatMoney(result.totalPaid)}\n*Interest paid:* ${formatMoney(result.interestPaid)}\n*New balance:* ${formatMoney(result.newBalance)}\n\n_Debt-free. For now. We'll find a way to fix that._`,
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    if (sub === 'default') {
+      const result = await convex.mutation(api.loans.default, { userId });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+      if (result.error === 'no_loan') { await respond({ response_type: 'ephemeral', text: "You don't have a loan to default on. Can't run from what doesn't exist." }); return; }
+
+      await notifyBalanceChange(client, convex, api, userId, 'Loan default', -result.defaultedAmount, result.newBalance);
+
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: '💀 Loan Defaulted' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Defaulted amount:* ${formatMoney(result.defaultedAmount)}\n*Account status:* :ice_cube: *FROZEN*\n\n_Your account has been frozen. Southbag remembers. Southbag always remembers._`,
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    // Otherwise treat as amount
+    const amount = parseFloat(text);
+    if (isNaN(amount) || amount <= 0) {
+      await respond({
+        response_type: 'ephemeral',
+        text: "Usage: `/south-loan <amount>` | `/south-loan status` | `/south-loan repay` | `/south-loan default`",
+      });
+      return;
+    }
+
+    const result = await convex.mutation(api.loans.take, { userId, amount });
+
+    if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+    if (result.error === 'frozen') { await respond({ response_type: 'ephemeral', text: "Your account is frozen. No loans for you." }); return; }
+    if (result.error === 'existing_loan') { await respond({ response_type: 'ephemeral', text: "You already have an active loan. Repay it first with `/south-loan repay` or default with `/south-loan default`." }); return; }
+    if (result.error === 'invalid_amount') { await respond({ response_type: 'ephemeral', text: "Invalid loan amount. Try something reasonable. Or don't. We don't care." }); return; }
+
+    await notifyBalanceChange(client, convex, api, userId, 'Loan received', result.principal, result.newBalance);
 
     await respond({
       response_type: 'ephemeral',
       blocks: [
         {
           type: 'header',
-          text: { type: 'plain_text', text: 'Loan Application Result' },
+          text: { type: 'plain_text', text: 'Loan Approved (surprisingly)' },
         },
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Requested amount:* ${formatMoney(amount)}\n*Status:* :x: *DENIED*\n*Reason:* ${reason}\n\n_Processing time: 0.003 seconds. That's how long it took us to not care._`,
+            text: `*Principal:* ${formatMoney(result.principal)}\n*Interest rate:* ${result.interestRate}% per hour\n*New balance:* ${formatMoney(result.newBalance)}\n\n:warning: _Interest accrues every hour. Repay with \`/south-loan repay\` before it spirals. Or don't. We love spirals._`,
           },
         },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: { type: 'plain_text', text: 'Appeal (do not press)' },
-              action_id: 'loan_appeal',
-            },
-          ],
-        },
       ],
-    });
-  });
-
-  // Handle the loan appeal button
-  app.action('loan_appeal', async ({ ack, respond }) => {
-    await ack();
-    await respond({
-      response_type: 'ephemeral',
-      text: "We told you not to press that. Application denied again. And now you have a warning on your account.",
     });
   });
 
@@ -646,6 +732,521 @@ function registerBankingCommands(app, convex, api) {
     await respond({
       response_type: 'ephemeral',
       text: `${emoji} *${result.outcome}* ${result.multiplier > 0 ? `(${result.multiplier}x)` : ''}\n\nGame: ${game}\nBet: ${formatMoney(result.bet)}\n${result.won ? `Payout: ${formatMoney(result.payout)}\nProfit: +${formatMoney(result.net)}` : `Lost: ${formatMoney(Math.abs(result.net))}`}\n\nNew balance: ${formatMoney(result.newBalance)}\n\n${flavor}`,
+    });
+  });
+
+  // /south-daily - Claim your daily reward
+  app.command('/south-daily', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+
+    const result = await convex.mutation(api.daily.claim, { userId });
+
+    if (result.error === 'no_account') {
+      await respond({ response_type: 'ephemeral', text: "You don't have an account. Use `/south-open-account` first." });
+      return;
+    }
+    if (result.error === 'cooldown') {
+      const hours = Math.floor(result.remaining / 3600);
+      const minutes = Math.floor((result.remaining % 3600) / 60);
+      await respond({ response_type: 'ephemeral', text: `You already claimed today. Come back in *${hours}h ${minutes}m*. Patience is a virtue. Not that Southbag cares about virtues.` });
+      return;
+    }
+
+    await notifyBalanceChange(client, convex, api, userId, 'Daily reward', result.net, result.newBalance);
+
+    await respond({
+      response_type: 'ephemeral',
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: 'Daily Reward Claimed' },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Reward:* ${formatMoney(result.reward)}${result.bonus ? ' :star: *BONUS!*' : ''}\n*Daily claim fee:* -${formatMoney(result.fee)}\n*Net received:* ${formatMoney(result.net)}\n\n*New balance:* ${formatMoney(result.newBalance)}`,
+          },
+        },
+        {
+          type: 'context',
+          elements: [
+            { type: 'mrkdwn', text: '_Free money! Well, minus the fee. So not free. Classic Southbag._' },
+          ],
+        },
+      ],
+    });
+  });
+
+  // /south-crypto - Crypto trading
+  app.command('/south-crypto', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+    const parts = command.text.trim().split(/\s+/);
+    const sub = (parts[0] || '').toLowerCase();
+
+    if (sub === 'prices') {
+      const prices = await convex.query(api.crypto.getPrices, {});
+
+      const lines = prices.map(c => `• *${c.name}* (${c.symbol}): ${formatMoney(c.price)}`).join('\n');
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: 'Southbag Crypto Exchange' },
+          },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Current Prices:*\n${lines}` },
+          },
+          {
+            type: 'context',
+            elements: [
+              { type: 'mrkdwn', text: '_Prices change based on vibes and nothing else._' },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+
+    if (sub === 'buy') {
+      const coin = (parts[1] || '').toUpperCase();
+      const amount = parseFloat(parts[2]);
+
+      if (!coin || isNaN(amount) || amount <= 0) {
+        await respond({ response_type: 'ephemeral', text: "Usage: `/south-crypto buy <coin> <amount>` — e.g. `/south-crypto buy SBAG 1.00`" });
+        return;
+      }
+
+      const result = await convex.mutation(api.crypto.buy, { userId, coin, amount });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+      if (result.error === 'frozen') { await respond({ response_type: 'ephemeral', text: "Account frozen. No crypto for you." }); return; }
+      if (result.error === 'insufficient') { await respond({ response_type: 'ephemeral', text: `Insufficient funds. You have ${formatMoney(result.balance)}. Try being less poor.` }); return; }
+      if (result.error === 'invalid_coin') { await respond({ response_type: 'ephemeral', text: "That coin doesn't exist. We only trade fake coins here, but not *that* fake." }); return; }
+
+      await notifyBalanceChange(client, convex, api, userId, `Bought ${result.coinAmount} ${coin}`, -(amount + result.fee), result.newBalance);
+
+      await respond({
+        response_type: 'ephemeral',
+        text: `:chart_with_upwards_trend: *Crypto Purchase*\n\nBought: *${result.coinAmount} ${coin}*\nSpent: ${formatMoney(amount)}\nTransaction fee: -${formatMoney(result.fee)}\n\nNew balance: ${formatMoney(result.newBalance)}\n\n_To the moon! (Results may vary. Moon not guaranteed.)_`,
+      });
+      return;
+    }
+
+    if (sub === 'sell') {
+      const coin = (parts[1] || '').toUpperCase();
+
+      if (!coin) {
+        await respond({ response_type: 'ephemeral', text: "Usage: `/south-crypto sell <coin>` — e.g. `/south-crypto sell SBAG`" });
+        return;
+      }
+
+      const result = await convex.mutation(api.crypto.sell, { userId, coin });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+      if (result.error === 'frozen') { await respond({ response_type: 'ephemeral', text: "Account frozen." }); return; }
+      if (result.error === 'invalid_coin') { await respond({ response_type: 'ephemeral', text: "That coin doesn't exist on our exchange." }); return; }
+      if (result.error === 'no_holdings') { await respond({ response_type: 'ephemeral', text: `You don't own any ${coin}. Can't sell what you don't have.` }); return; }
+
+      await notifyBalanceChange(client, convex, api, userId, `Sold ${coin}`, result.proceeds - result.tax, result.newBalance);
+
+      await respond({
+        response_type: 'ephemeral',
+        text: `:chart_with_downwards_trend: *Crypto Sale*\n\nSold: *${result.amount} ${coin}*\nProceeds: ${formatMoney(result.proceeds)}\nCapital gains tax: -${formatMoney(result.tax)}\n\nNew balance: ${formatMoney(result.newBalance)}\n\n_Diamond hands? More like paper hands. Southbag approves._`,
+      });
+      return;
+    }
+
+    if (sub === 'portfolio') {
+      const result = await convex.query(api.crypto.portfolio, { userId });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+
+      if (!result.holdings || result.holdings.length === 0) {
+        await respond({ response_type: 'ephemeral', text: "Your crypto portfolio is empty. Just like your ambitions." });
+        return;
+      }
+
+      const lines = result.holdings.map(h => `• *${h.coin}*: ${h.amount} (worth ${formatMoney(h.value)})`).join('\n');
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: 'Your Crypto Portfolio' },
+          },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `${lines}\n\n*Total value:* ${formatMoney(result.totalValue)}` },
+          },
+          {
+            type: 'context',
+            elements: [
+              { type: 'mrkdwn', text: '_Past performance is not indicative of future results. Neither is present performance._' },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+
+    await respond({
+      response_type: 'ephemeral',
+      text: "Usage: `/south-crypto prices` | `/south-crypto buy <coin> <amount>` | `/south-crypto sell <coin>` | `/south-crypto portfolio`",
+    });
+  });
+
+  // /south-upgrade - Upgrade your account tier
+  app.command('/south-upgrade', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+
+    const result = await convex.mutation(api.accounts.upgrade, { userId });
+
+    if (result.error === 'no_account') {
+      await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." });
+      return;
+    }
+    if (result.error === 'max_tier') {
+      await respond({ response_type: 'ephemeral', text: "You're already at the highest tier. There's nothing left to waste money on. Impressive." });
+      return;
+    }
+    if (result.error === 'insufficient') {
+      await respond({ response_type: 'ephemeral', text: `You need ${formatMoney(result.cost)} to upgrade but only have ${formatMoney(result.balance)}. Keep grinding.` });
+      return;
+    }
+
+    await notifyBalanceChange(client, convex, api, userId, `Account upgrade to ${result.tier}`, -result.cost, result.newBalance);
+
+    await respond({
+      response_type: 'ephemeral',
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: 'Account Upgraded!' },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*New tier:* ${result.tier}\n*Cost:* -${formatMoney(result.cost)}\n*New balance:* ${formatMoney(result.newBalance)}\n\n_Congratulations! Your new tier does absolutely nothing different. But it sounds fancier, and that's what banking is all about._`,
+          },
+        },
+        {
+          type: 'context',
+          elements: [
+            { type: 'mrkdwn', text: '_Premium mediocrity, now at a premium price._' },
+          ],
+        },
+      ],
+    });
+  });
+
+  // /south-gift - Gift money to another user
+  app.command('/south-gift', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+    const text = command.text.trim();
+
+    const mentionMatch = text.match(/<@([A-Z0-9]+)(\|[^>]*)?>/);
+    if (!mentionMatch) {
+      await respond({ response_type: 'ephemeral', text: "Usage: `/south-gift @user <amount>` — e.g. `/south-gift @someone 5.00`" });
+      return;
+    }
+
+    const recipientId = mentionMatch[1];
+    const withoutMention = text.replace(/<@[^>]+>/, '').trim();
+    const amount = parseFloat(withoutMention);
+
+    if (isNaN(amount) || amount <= 0) {
+      await respond({ response_type: 'ephemeral', text: "Enter a valid amount. `/south-gift @user 5.00`" });
+      return;
+    }
+
+    const result = await convex.mutation(api.accounts.gift, { senderId: userId, recipientId, amount });
+
+    if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "You don't have an account. `/south-open-account` first." }); return; }
+    if (result.error === 'no_recipient') { await respond({ response_type: 'ephemeral', text: "The recipient doesn't have a Southbag account. They're probably better off." }); return; }
+    if (result.error === 'self_gift') { await respond({ response_type: 'ephemeral', text: "You can't gift money to yourself. That's just... moving money. With extra fees." }); return; }
+    if (result.error === 'insufficient') { await respond({ response_type: 'ephemeral', text: `Insufficient funds. You have ${formatMoney(result.balance)} but need ${formatMoney(result.needed)}. Generosity requires money.` }); return; }
+
+    await notifyBalanceChange(client, convex, api, userId, `Gift to <@${recipientId}>`, -(amount + result.tax), result.senderBalance);
+    await notifyBalanceChange(client, convex, api, recipientId, `Gift from <@${userId}>`, result.netReceived, result.recipientBalance);
+
+    await respond({
+      response_type: 'ephemeral',
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: 'Gift Sent!' },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Sent:* ${formatMoney(amount)} to <@${recipientId}>\n*Generosity tax:* -${formatMoney(result.tax)}\n*Net received by them:* ${formatMoney(result.netReceived)}\n\n*Your new balance:* ${formatMoney(result.senderBalance)}`,
+          },
+        },
+        {
+          type: 'context',
+          elements: [
+            { type: 'mrkdwn', text: '_How generous. Southbag took its cut, of course._' },
+          ],
+        },
+      ],
+    });
+  });
+
+  // /south-insure - Insurance products
+  app.command('/south-insure', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+    const parts = command.text.trim().split(/\s+/);
+    const sub = (parts[0] || '').toLowerCase();
+
+    if (sub === 'buy') {
+      const plan = (parts[1] || '').toLowerCase();
+
+      if (!['basic', 'silver', 'gold'].includes(plan)) {
+        await respond({ response_type: 'ephemeral', text: "Available plans: `basic`, `silver`, `gold`. Usage: `/south-insure buy <plan>`" });
+        return;
+      }
+
+      const result = await convex.mutation(api.insurance.purchase, { userId, plan });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+      if (result.error === 'insufficient') { await respond({ response_type: 'ephemeral', text: `You need ${formatMoney(result.cost)} for the ${plan} plan but only have ${formatMoney(result.balance)}. Uninsured it is.` }); return; }
+      if (result.error === 'already_insured') { await respond({ response_type: 'ephemeral', text: "You're already insured. One useless policy at a time, please." }); return; }
+
+      await notifyBalanceChange(client, convex, api, userId, `Insurance: ${result.planName}`, -result.premium, result.newBalance);
+
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: 'Insurance Purchased' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Plan:* ${result.planName}\n*Premium:* -${formatMoney(result.premium)}\n*Coverage:* ${result.duration}\n\n*New balance:* ${formatMoney(result.newBalance)}`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              { type: 'mrkdwn', text: '_You are now "protected." We use that word very loosely._' },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+
+    if (sub === 'claim') {
+      const reason = parts.slice(1).join(' ') || 'unspecified';
+
+      const result = await convex.mutation(api.insurance.claim, { userId, reason });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+      if (result.error === 'no_insurance') { await respond({ response_type: 'ephemeral', text: "You don't have insurance. Buy a plan first with `/south-insure buy <plan>`." }); return; }
+
+      await notifyBalanceChange(client, convex, api, userId, 'Insurance claim processing fee', -result.processingFee, result.newBalance);
+
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: 'Insurance Claim — DENIED' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Your claim:* "${reason}"\n*Status:* :x: *DENIED*\n*Reason:* ${result.denialReason}\n\n*Claim processing fee:* -${formatMoney(result.processingFee)}\n*New balance:* ${formatMoney(result.newBalance)}`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              { type: 'mrkdwn', text: '_All claims are denied. It\'s in the fine print. Which doesn\'t exist._' },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+
+    if (sub === 'status') {
+      const result = await convex.query(api.insurance.getPlan, { userId });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+
+      if (!result.plan) {
+        await respond({ response_type: 'ephemeral', text: ":warning: You are currently *uninsured*. Not that insurance would help you here. `/south-insure buy <plan>`" });
+        return;
+      }
+
+      await respond({
+        response_type: 'ephemeral',
+        blocks: [
+          {
+            type: 'header',
+            text: { type: 'plain_text', text: 'Insurance Status' },
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Plan:* ${result.plan.name}\n*Status:* Active (for what it's worth)\n*Expires:* ${result.plan.expiry}\n*Claims denied:* ${result.plan.claimsDenied}`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              { type: 'mrkdwn', text: '_Your premiums are hard at work funding executive bonuses._' },
+            ],
+          },
+        ],
+      });
+      return;
+    }
+
+    await respond({
+      response_type: 'ephemeral',
+      text: "Usage: `/south-insure buy <plan>` | `/south-insure claim <reason>` | `/south-insure status`\nPlans: `basic`, `silver`, `gold`",
+    });
+  });
+
+  // /south-heist - Cooperative vault robbery
+  app.command('/south-heist', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+    const channelId = command.channel_id;
+    const sub = (command.text.trim().split(/\s+/)[0] || '').toLowerCase();
+
+    if (sub === 'start') {
+      const result = await convex.mutation(api.heist.start, { userId, channelId });
+
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+      if (result.error) { await respond({ response_type: 'ephemeral', text: `Heist error: ${result.error}` }); return; }
+
+      await respond({
+        response_type: 'in_channel',
+        text: `:rotating_light: <@${userId}> is planning a *VAULT HEIST*! :rotating_light:\n\nType \`/south-heist join\` to join the crew.\nWhen ready, the organizer types \`/south-heist go\` to execute.\n\n_Fortune favors the bold. Southbag favors nobody._`,
+      });
+      return;
+    }
+
+    if (sub === 'join') {
+      const result = await convex.mutation(api.heist.join, { userId, channelId });
+
+      if (result.error === 'no_heist') { await respond({ response_type: 'ephemeral', text: "There's no active heist to join. Someone needs to `/south-heist start` first." }); return; }
+      if (result.error === 'already_joined') { await respond({ response_type: 'ephemeral', text: "You're already in the crew. Sit tight." }); return; }
+      if (result.error === 'full') { await respond({ response_type: 'ephemeral', text: "The crew is full. Too many cooks spoil the heist." }); return; }
+      if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first." }); return; }
+      if (result.error) { await respond({ response_type: 'ephemeral', text: `Heist error: ${result.error}` }); return; }
+
+      await respond({
+        response_type: 'in_channel',
+        text: `:bust_in_silhouette: <@${userId}> joined the heist crew! *${result.participantCount}* members ready.\n\n_More people = bigger vault. Also more ways to get caught._`,
+      });
+      return;
+    }
+
+    if (sub === 'go') {
+      const result = await convex.mutation(api.heist.execute, { userId, channelId });
+
+      if (result.error === 'not_starter') { await respond({ response_type: 'ephemeral', text: "Only the heist organizer can execute the heist." }); return; }
+      if (result.error === 'not_enough') { await respond({ response_type: 'ephemeral', text: "Not enough crew members. You need more people. `/south-heist join`" }); return; }
+      if (result.error === 'no_heist') { await respond({ response_type: 'ephemeral', text: "There's no active heist. `/south-heist start` one first." }); return; }
+      if (result.error) { await respond({ response_type: 'ephemeral', text: `Heist error: ${result.error}` }); return; }
+
+      if (result.success) {
+        const participantLines = result.participants.map(
+          p => `• <@${p.userId}>: +${formatMoney(p.share)}`
+        ).join('\n');
+
+        for (const p of result.participants) {
+          await notifyBalanceChange(client, convex, api, p.userId, 'Vault heist payout', p.share, p.newBalance);
+        }
+
+        await respond({
+          response_type: 'in_channel',
+          text: `:moneybag: *THE HEIST WAS A SUCCESS!* :moneybag:\n\n*Vault payout:* ${formatMoney(result.totalPayout)}\n\n*Crew shares:*\n${participantLines}\n\n_Southbag will be reviewing the security tapes. Eventually._`,
+        });
+      } else {
+        const participantLines = result.participants.map(
+          p => `• <@${p.userId}>: -${formatMoney(p.fine)}`
+        ).join('\n');
+
+        for (const p of result.participants) {
+          await notifyBalanceChange(client, convex, api, p.userId, 'Heist failure fine', -p.fine, p.newBalance);
+        }
+
+        await respond({
+          response_type: 'in_channel',
+          text: `:oncoming_police_car: *THE HEIST FAILED!* :oncoming_police_car:\n\nThe crew got caught. Everyone pays.\n\n*Fines:*\n${participantLines}\n\n_Crime doesn't pay. Except when it does. Which is not now._`,
+        });
+      }
+      return;
+    }
+
+    await respond({
+      response_type: 'ephemeral',
+      text: "Usage: `/south-heist start` | `/south-heist join` | `/south-heist go`",
+    });
+  });
+
+  // /south-beg - Beg for money
+  app.command('/south-beg', async ({ command, ack, respond, client }) => {
+    await ack();
+    const userId = command.user_id;
+
+    const result = await convex.mutation(api.beg.beg, { userId });
+
+    if (result.error === 'no_account') { await respond({ response_type: 'ephemeral', text: "No account. `/south-open-account` first. Even beggars need paperwork." }); return; }
+    if (result.error === 'cooldown') {
+      await respond({ response_type: 'ephemeral', text: `You already begged recently. Try again in *${result.remaining} seconds*. Have some dignity.` });
+      return;
+    }
+    if (result.error) { await respond({ response_type: 'ephemeral', text: `Error: ${result.error}` }); return; }
+
+    let message;
+    switch (result.type) {
+      case 'denied':
+        message = `:no_entry_sign: You held out your hand. The teller looked at you, laughed, and walked away.\n\n*Received:* nothing. Absolutely nothing.`;
+        break;
+      case 'tiny':
+        message = `:coin: A teller flicked a coin at you. It bounced off your forehead.\n\n*Received:* ${formatMoney(result.amount)}\n*New balance:* ${formatMoney(result.newBalance)}`;
+        break;
+      case 'decent':
+        message = `:moneybag: Someone took pity on you and tossed some cash your way.\n\n*Received:* ${formatMoney(result.amount)}\n*New balance:* ${formatMoney(result.newBalance)}`;
+        break;
+      case 'reverse':
+        message = `:rotating_light: YOU got charged for begging in the lobby. Security was called.\n\n*Lost:* ${formatMoney(Math.abs(result.amount))}\n*New balance:* ${formatMoney(result.newBalance)}`;
+        break;
+      case 'jackpot':
+        message = `:star2: The teller felt genuinely sorry for you. That's never happened before.\n\n*Received:* ${formatMoney(result.amount)}\n*New balance:* ${formatMoney(result.newBalance)}`;
+        break;
+      default:
+        message = `Something happened. You got ${formatMoney(result.amount)}.\n*New balance:* ${formatMoney(result.newBalance)}`;
+    }
+
+    if (result.type !== 'denied') {
+      await notifyBalanceChange(client, convex, api, userId, 'Begging', result.amount, result.newBalance);
+    }
+
+    await respond({
+      response_type: 'ephemeral',
+      text: message,
     });
   });
 

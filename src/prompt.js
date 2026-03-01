@@ -12,6 +12,11 @@ BANKING FEATURES - The user can interact with their Southbag account using slash
 - /south-job — Apply for a job at Southbag. Gets assigned a random terrible position. Charged a uniform fee.
 - /south-work — Complete a shift. Earns a pitiful salary (taxed at 40%). 30 second cooldown. Chance of overtime bonus, docked pay, or workplace incident (costs money).
 - /south-quit — Quit your job. Charged an exit interview fee.
+- /south-daily — Claim a daily reward ($0.01-$0.25, minus a processing fee). 5% chance of bonus day. 24h cooldown.
+- /south-crypto <prices|buy|sell|portfolio> — Trade fake crypto (SouthCoin, FeeCoin, ScamToken, HODLcoin, RugPull). 5% buy fee, 10% capital gains tax on sell. Prices are volatile and mostly go down.
+- /south-upgrade — Upgrade account tier (Bronze→Silver→Gold→Platinum→Diamond→Obsidian). Each tier costs more and does absolutely nothing.
+- /south-gift @user <amount> — Gift money with a 20% generosity tax. Being nice costs extra.
+- /south-insure <buy|claim|status> — Buy insurance (basic/silver/gold). Claims are always denied. You still get charged for filing.
 - /south-coinflip <amount> <heads|tails> — Coin flip. Wins pay 1.8x (house edge). 50/50 odds.
 - /south-slots <amount> — Slot machine. Three matching = jackpot (5-10x). Two matching = 1.5x. Three skulls = lose 3x your bet.
 - /south-gamble <amount> <game> — Card games. High risk, high reward. Try blackjack, war, or more. You will probably lose.

@@ -8,6 +8,7 @@ const { chat } = require('./ai');
 const { parseCommands, executeCommands } = require('./commands');
 const { SYSTEM_PROMPT } = require('./prompt');
 const { registerBankingCommands, notifyBalanceChange } = require('./banking');
+const { registerAppHome } = require('./home');
 
 const ALLOWED_CHANNEL = 'C0AH7GB4V6X';
 
@@ -22,6 +23,9 @@ const app = new App({
 
 // Register slash commands for banking
 registerBankingCommands(app, convex, api);
+
+// Register App Home tab
+registerAppHome(app, convex, api);
 
 async function handleMessage(event, say, client) {
   // Ignore bot messages

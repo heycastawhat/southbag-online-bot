@@ -350,6 +350,105 @@ export const getNotificationUsers = query({
   },
 });
 
+const TIERS = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Obsidian"];
+const TIER_COSTS = [0.10, 0.25, 0.50, 1.00, 2.00, 5.00];
+
+export const upgrade = mutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const account = await ctx.db
+      .query("accounts")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!account) return { error: "no_account" };
+
+    const currentIndex = account.tier ? TIERS.indexOf(account.tier) : -1;
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex >= TIERS.length) return { error: "max_tier", tier: account.tier };
+
+    const cost = TIER_COSTS[nextIndex];
+    if (account.balance < cost) return { error: "insufficient", balance: account.balance, needed: cost };
+
+    const newBalance = Math.round((account.balance - cost) * 100) / 100;
+    const newTier = TIERS[nextIndex];
+
+    await ctx.db.patch(account._id, { balance: newBalance, tier: newTier });
+
+    const now = Date.now();
+    await ctx.db.insert("transactions", {
+      userId: args.userId,
+      type: "fee",
+      amount: -cost,
+      description: `Account upgrade to ${newTier} (does absolutely nothing)`,
+      balanceAfter: newBalance,
+      createdAt: now,
+    });
+
+    return { success: true, previousTier: account.tier || "None", newTier, cost, newBalance };
+  },
+});
+
+export const gift = mutation({
+  args: { senderId: v.string(), recipientId: v.string(), amount: v.number() },
+  handler: async (ctx, args) => {
+    if (args.senderId === args.recipientId) return { error: "self_gift" };
+
+    const sender = await ctx.db
+      .query("accounts")
+      .withIndex("by_user", (q) => q.eq("userId", args.senderId))
+      .first();
+    if (!sender) return { error: "no_sender_account" };
+
+    const recipient = await ctx.db
+      .query("accounts")
+      .withIndex("by_user", (q) => q.eq("userId", args.recipientId))
+      .first();
+    if (!recipient) return { error: "no_recipient_account" };
+
+    const tax = Math.round(args.amount * 0.20 * 100) / 100; // 20% generosity tax
+    const totalDeducted = Math.round((args.amount + tax) * 100) / 100;
+
+    if (sender.balance < totalDeducted) return { error: "insufficient", balance: sender.balance, needed: totalDeducted };
+
+    const now = Date.now();
+    const senderNewBalance = Math.round((sender.balance - totalDeducted) * 100) / 100;
+    const recipientNewBalance = Math.round((recipient.balance + args.amount) * 100) / 100;
+
+    await ctx.db.patch(sender._id, { balance: senderNewBalance });
+    await ctx.db.patch(recipient._id, { balance: recipientNewBalance });
+
+    await ctx.db.insert("transactions", {
+      userId: args.senderId,
+      type: "transfer",
+      amount: -args.amount,
+      description: `Gift to <@${args.recipientId}>`,
+      balanceAfter: Math.round((sender.balance - args.amount) * 100) / 100,
+      createdAt: now,
+    });
+
+    await ctx.db.insert("transactions", {
+      userId: args.senderId,
+      type: "fee",
+      amount: -tax,
+      description: "Generosity tax (20%)",
+      balanceAfter: senderNewBalance,
+      createdAt: now + 1,
+    });
+
+    await ctx.db.insert("transactions", {
+      userId: args.recipientId,
+      type: "deposit",
+      amount: args.amount,
+      description: `Gift from <@${args.senderId}>`,
+      balanceAfter: recipientNewBalance,
+      createdAt: now,
+    });
+
+    return { success: true, amount: args.amount, tax, totalDeducted, senderNewBalance, recipientNewBalance };
+  },
+});
+
 export const setStatus = mutation({
   args: { userId: v.string(), status: v.string() },
   handler: async (ctx, args) => {

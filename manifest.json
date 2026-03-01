@@ -8,6 +8,11 @@
     "background_color": "#1a1a2e"
   },
   "features": {
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
     "bot_user": {
       "display_name": "Southbag Support",
       "always_online": true
@@ -92,6 +97,45 @@
         "should_escape": false
       },
       {
+        "command": "/south-heist",
+        "description": "Plan a group vault robbery (start/join/go)",
+        "usage_hint": "start | join | go",
+        "should_escape": false
+      },
+      {
+        "command": "/south-beg",
+        "description": "Beg Southbag for money. Dignity not included.",
+        "should_escape": false
+      },
+      {
+        "command": "/south-daily",
+        "description": "Claim your pathetic daily reward",
+        "should_escape": false
+      },
+      {
+        "command": "/south-crypto",
+        "description": "Trade fake crypto (prices, buy, sell, portfolio)",
+        "usage_hint": "prices | buy <coin> <amount> | sell <coin> | portfolio",
+        "should_escape": false
+      },
+      {
+        "command": "/south-upgrade",
+        "description": "Upgrade your account tier (does nothing)",
+        "should_escape": false
+      },
+      {
+        "command": "/south-gift",
+        "description": "Gift money to someone (generosity tax applies)",
+        "usage_hint": "@user <amount>",
+        "should_escape": true
+      },
+      {
+        "command": "/south-insure",
+        "description": "Buy insurance, check status, or file a claim (denied)",
+        "usage_hint": "buy <plan> | claim <reason> | status",
+        "should_escape": false
+      },
+      {
         "command": "/south-mystery-fee",
         "description": "Charge yourself a mystery fee. Why would you.",
         "should_escape": false
@@ -116,6 +160,7 @@
   "settings": {
     "event_subscriptions": {
       "bot_events": [
+        "app_home_opened",
         "app_mention",
         "message.channels",
         "message.im"

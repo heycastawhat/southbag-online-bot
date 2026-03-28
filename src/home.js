@@ -284,4 +284,4 @@ function registerAppHome(app, convex, api) {
   });
 }
 
-module.exports = { registerAppHome };
+module.exports = { registerAppHome, buildHomeBlocks };

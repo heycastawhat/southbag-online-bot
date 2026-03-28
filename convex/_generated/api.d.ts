@@ -9,6 +9,14 @@
  */
 
 import type * as accounts from "../accounts.js";
+import type * as beg from "../beg.js";
+import type * as crypto from "../crypto.js";
+import type * as daily from "../daily.js";
+import type * as gambling from "../gambling.js";
+import type * as heist from "../heist.js";
+import type * as insurance from "../insurance.js";
+import type * as jobs from "../jobs.js";
+import type * as loans from "../loans.js";
 import type * as messages from "../messages.js";
 import type * as transactions from "../transactions.js";
 
@@ -20,6 +28,14 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   accounts: typeof accounts;
+  beg: typeof beg;
+  crypto: typeof crypto;
+  daily: typeof daily;
+  gambling: typeof gambling;
+  heist: typeof heist;
+  insurance: typeof insurance;
+  jobs: typeof jobs;
+  loans: typeof loans;
   messages: typeof messages;
   transactions: typeof transactions;
 }>;
